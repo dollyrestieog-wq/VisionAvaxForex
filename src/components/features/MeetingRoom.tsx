@@ -606,14 +606,25 @@ export function ActiveMeetingRoom({ meetingId, meetingTitle, isHost, videoOn: in
         stream.getTracks().forEach(t => pc.addTrack(t, stream));
       }
 
-      pc.ontrack = (e) => {
-        const s = e.streams[0] || new MediaStream([e.track]);
-        remoteStreamsRef.current.set(peerId, s);
-        const el = remoteVideoRefsMap.current.get(peerId);
-        if (el) {
-          el.srcObject = s;
-          el.muted = false;
-          el.play().catch((err) => {
+      pc.ontrack = async (e) => {
+  const stream = e.streams[0];
+
+  if (!stream) return;
+
+  remoteStreamsRef.current.set(peerId, stream);
+
+  const el = remoteVideoRefsMap.current.get(peerId);
+
+  if (el) {
+    el.srcObject = stream;
+
+    try {
+      await el.play();
+    } catch {
+      setAudioBlocked(true);
+    }
+  }
+};
             // Browser blocked autoplay — show unlock button
             if (err.name === 'NotAllowedError') {
               setAudioBlocked(true);
