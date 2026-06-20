@@ -780,13 +780,10 @@ export function ActiveMeetingRoom({ meetingId, meetingTitle, isHost, videoOn: in
         supabase.from('meeting_peers').delete().eq('meeting_id', mid).eq('user_id', uid).then(() => {});
       }
       if (isHostRef.current) {
-  await supabase
-    .from('meetings')
-    .update({
-      host_id: null
-    })
-    .eq('id', mid);
-}
+        supabase.from('meetings').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', mid).then(() => {});
+      }
+    };
+  }, []);
 
   // ── Audio unlock: try to play all remote videos ──
   function unlockAudio() {
