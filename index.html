@@ -2,57 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>%VITE_APP_TITLE%</title>
-    <link rel="stylesheet" href="/src/style.css" />
+    <link rel="icon" href="/icon-192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>VISION AVAX FOREX</title>
+    <meta name="theme-color" content="#FF1493" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="AVAX FOREX" />
   </head>
   <body>
-    <div class="main">
-      <div class="navbar">
-        <div class="navbar__left">
-          <button id="callButton" disabled>
-            <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" stroke-linecap="round" stroke-linejoin="round"></path>
-            </svg>
-            <br />
-            Create Call </button>
-        </div>
-        <div class="navbar__center">
-          %VITE_APP_TITLE%
-          <button id="webcamButton">
-            <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" stroke-linecap="round"></path>
-            </svg>
-            <br />
-            Start webcam </button>
-            <button id="hangupButton" disabled>Hangup</button>
-        </div>
-        <div class="navbar__right">
-          <input id="callInput" />
-          <button id="answerButton" disabled>
-            <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" stroke-linecap="round" stroke-linejoin="round"></path>
-            </svg> 
-            <br />
-            Join Call </button>
-          </a>
-        </div>
-      </div>
-      <div class="videos">
-        <div id="caller">
-          <div class="video-container">
-            <h3 class="video-info">Your View</h3>
-            <video id="webcamVideo" autoplay playsinline muted class="caller-video"></video>
-          </div>
-        </div>
-        <div id="answerer" class="video-container">
-          <h3 class="video-info">Participant View</h3>
-          <video id="remoteVideo" autoplay playsinline class="answerer-video"></video>
-        </div>
-      </div>
-    </div>
-    <!-- <button id="webcamButton">Start webcam</button><h2>2. Create a new Call</h2><button id="callButton" disabled>Create Call (offer)</button><h2>3. Join a Call</h2><p>Answer the call from a different browser window or device</p><input id="callInput" /><button id="answerButton" disabled>Answer</button><h2>4. Hangup</h2> -->
-    <script type="module" src="/src/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
