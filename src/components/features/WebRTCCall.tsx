@@ -1,205 +1,581 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Volume2, VolumeX, Maximize2, Minimize2 } from 'lucide-react';
+// ⚠️ DO NOT REPLACE THIS FILE — Core React component required by Messenger.tsx and App.tsx
+// Required exports: useCall, ActiveCallScreen, GlobalCallListener
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Phone, PhoneOff, Video, VideoOff, Mic, MicOff,
+  Volume2, VolumeX, X, FlipHorizontal, Monitor
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
-interface WebRTCCallProps {
-  callerName: string;
-  callerAvatarUrl?: string;
-  isVideoCallInitial?: boolean;
-  onHangUp: () => void;
+// ── Types ──
+interface RemoteUser {
+  id: string;
+  username: string;
+  avatar?: string;
 }
 
-export const WebRTCCall: React.FC<WebRTCCallProps> = ({
-  callerName,
-  callerAvatarUrl = "https://unsplash.com",
-  isVideoCallInitial = true,
-  onHangUp
-}) => {
-  // State management kufuatilia mtiririko kama WhatsApp/Telegram
-  const [callState, setCallState] = useState<'calling' | 'connected' | 'disconnected'>('calling');
-  const [isVideoOn, setIsVideoOn] = useState(isVideoCallInitial);
+interface ActiveCallState {
+  id: string;
+  remoteUser: RemoteUser;
+  callType: 'audio' | 'video';
+  isInitiator: boolean;
+}
+
+interface CallContextValue {
+  startCall: (user: RemoteUser, type: 'audio' | 'video') => void;
+  activeCall: ActiveCallState | null;
+  setActiveCall: (call: ActiveCallState | null) => void;
+  callBg: string;
+}
+
+// ── Global call context ──
+const CallContext = React.createContext<CallContextValue>({
+  startCall: () => {},
+  activeCall: null,
+  setActiveCall: () => {},
+  callBg: '#0d0d1a',
+});
+
+export function useCall() {
+  return React.useContext(CallContext);
+}
+
+// ── Format duration ──
+function formatDuration(s: number) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+}
+
+// ── Avatar fallback ──
+function Avatar({ user, size = 80 }: { user: RemoteUser; size?: number }) {
+  return user.avatar ? (
+    <img
+      src={user.avatar}
+      alt={user.username}
+      className="rounded-full object-cover border-2 border-white/20"
+      style={{ width: size, height: size }}
+    />
+  ) : (
+    <div
+      className="rounded-full flex items-center justify-center font-black text-white"
+      style={{
+        width: size,
+        height: size,
+        background: 'linear-gradient(135deg, #FF1493, #FF69B4)',
+        fontSize: size * 0.35,
+      }}
+    >
+      {user.username[0]?.toUpperCase() || '?'}
+    </div>
+  );
+}
+
+// ── Active Call Screen ──
+export function ActiveCallScreen({
+  callId,
+  localUser,
+  remoteUser,
+  callType,
+  isInitiator,
+  callBg,
+  onEnd,
+}: {
+  callId: string;
+  localUser: RemoteUser;
+  remoteUser: RemoteUser;
+  callType: 'audio' | 'video';
+  isInitiator: boolean;
+  callBg: string;
+  onEnd: () => void;
+}) {
+  const [callState, setCallState] = useState<'connecting' | 'ringing' | 'connected' | 'ended'>(
+    isInitiator ? 'ringing' : 'connecting'
+  );
   const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOn, setIsVideoOn] = useState(callType === 'video');
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-  const [isFullScreen, setIsFullScreen] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [controlsVisible, setControlsVisible] = useState(true);
 
-  // WebRTC Stream Refs
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const durationRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hideControlsRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 1. Kuhesabu muda wa simu (Call Timer) kama Telegram
+  // Auto-hide controls after 4s
+  function resetControlsTimer() {
+    setControlsVisible(true);
+    if (hideControlsRef.current) clearTimeout(hideControlsRef.current);
+    hideControlsRef.current = setTimeout(() => {
+      if (callState === 'connected') setControlsVisible(false);
+    }, 4000);
+  }
+
+  // Duration timer
   useEffect(() => {
-    let timer: NodeJS.Timeout;
     if (callState === 'connected') {
-      timer = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
+      durationRef.current = setInterval(() => setDuration(d => d + 1), 1000);
+      resetControlsTimer();
     }
-    return () => clearInterval(timer);
+    return () => {
+      if (durationRef.current) clearInterval(durationRef.current);
+      if (hideControlsRef.current) clearTimeout(hideControlsRef.current);
+    };
   }, [callState]);
 
-  // 2. Kuanzisha Media (Camera/Microphone) na WebRTC
+  // Setup WebRTC
   useEffect(() => {
-    async function setupMediaAndConnection() {
+    let mounted = true;
+
+    async function setup() {
       try {
-        // Omba ruhusa ya sauti na video
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: isVideoOn,
-          audio: true
+          video: callType === 'video',
+          audio: true,
         });
-        
+        if (!mounted) { stream.getTracks().forEach(t => t.stop()); return; }
         localStreamRef.current = stream;
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
         }
 
-        // Simulating receiving the call for demo purposes after 3 seconds
-        // Kwenye application halisi, hapa utatumia Signaling Server (WebSockets)
-        setTimeout(() => {
-          setCallState('connected');
-          // Hapa ungeunganisha RTCPeerConnection na kuanza ku-stream remote video
-        }, 3000);
+        const pc = new RTCPeerConnection({
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+          ],
+        });
+        pcRef.current = pc;
 
-      } catch (error) {
-        console.error("Ufikiaji wa kamera/kipaza sauti umekataliwa:", error);
+        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+        pc.ontrack = (evt) => {
+          if (remoteVideoRef.current && evt.streams[0]) {
+            remoteVideoRef.current.srcObject = evt.streams[0];
+          }
+        };
+
+        const candidatesQueue: RTCIceCandidate[] = [];
+        pc.onicecandidate = async (evt) => {
+          if (!evt.candidate) return;
+          candidatesQueue.push(evt.candidate);
+          // Store candidates in DB
+          const { data: row } = await supabase
+            .from('calls')
+            .select('caller_candidates, callee_candidates, caller_id')
+            .eq('id', callId)
+            .single();
+          if (!row) return;
+          const isCaller = row.caller_id === localUser.id;
+          const field = isCaller ? 'caller_candidates' : 'callee_candidates';
+          const existing = (row[field] as any[]) || [];
+          await supabase
+            .from('calls')
+            .update({ [field]: [...existing, evt.candidate.toJSON()] })
+            .eq('id', callId);
+        };
+
+        if (isInitiator) {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          await supabase
+            .from('calls')
+            .update({ offer: JSON.stringify(offer), status: 'ringing' })
+            .eq('id', callId);
+
+          // Poll for answer
+          pollRef.current = setInterval(async () => {
+            const { data } = await supabase
+              .from('calls')
+              .select('answer, callee_candidates, status')
+              .eq('id', callId)
+              .single();
+            if (!data || !mounted) return;
+            if (data.status === 'rejected' || data.status === 'ended') {
+              cleanup();
+              onEnd();
+              return;
+            }
+            if (data.answer && pc.signalingState === 'have-local-offer') {
+              await pc.setRemoteDescription(JSON.parse(data.answer));
+              if (mounted) setCallState('connected');
+              // Add queued ICE candidates
+              for (const c of (data.callee_candidates as any[] || [])) {
+                await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+              }
+            }
+          }, 2000);
+        } else {
+          // Callee: wait for offer
+          const waitOffer = setInterval(async () => {
+            const { data } = await supabase
+              .from('calls')
+              .select('offer, caller_candidates, status')
+              .eq('id', callId)
+              .single();
+            if (!data || !mounted) return;
+            if (data.status === 'ended') { cleanup(); onEnd(); return; }
+            if (data.offer && pc.signalingState === 'stable') {
+              clearInterval(waitOffer);
+              await pc.setRemoteDescription(JSON.parse(data.offer));
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              await supabase
+                .from('calls')
+                .update({ answer: JSON.stringify(answer), status: 'active' })
+                .eq('id', callId);
+              if (mounted) setCallState('connected');
+              for (const c of (data.caller_candidates as any[] || [])) {
+                await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+              }
+              // Poll for ended status
+              pollRef.current = setInterval(async () => {
+                const { data: d } = await supabase
+                  .from('calls')
+                  .select('status')
+                  .eq('id', callId)
+                  .single();
+                if (d?.status === 'ended' && mounted) { cleanup(); onEnd(); }
+              }, 3000);
+            }
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('WebRTC setup error:', err);
+        if (mounted) setCallState('ended');
       }
     }
 
-    setupMediaAndConnection();
+    function cleanup() {
+      mounted = false;
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (localStreamRef.current) localStreamRef.current.getTracks().forEach(t => t.stop());
+      if (pcRef.current) pcRef.current.close();
+    }
 
+    setup();
     return () => {
-      // Clean up streams wakati component inafungwa
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-      }
+      mounted = false;
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (localStreamRef.current) localStreamRef.current.getTracks().forEach(t => t.stop());
+      if (pcRef.current) pcRef.current.close();
     };
-  }, []);
+  }, [callId, isInitiator, callType]);
 
-  // 3. Format Muda (00:00)
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  async function hangUp() {
+    await supabase.from('calls').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', callId);
+    if (localStreamRef.current) localStreamRef.current.getTracks().forEach(t => t.stop());
+    if (pcRef.current) pcRef.current.close();
+    if (pollRef.current) clearInterval(pollRef.current);
+    onEnd();
+  }
 
-  // 4. Kuzuia/Kuruhusu Sauti (Mute/Unmute)
-  const toggleMute = () => {
+  function toggleMute() {
     if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach(track => {
-        track.enabled = !track.enabled;
-      });
+      localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = isMuted; });
       setIsMuted(!isMuted);
     }
-  };
+  }
 
-  // 5. Washa/Zima Video wakati wa simu
-  const toggleVideo = () => {
+  function toggleVideo() {
     if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach(track => {
-        track.enabled = !track.enabled;
-      });
+      localStreamRef.current.getVideoTracks().forEach(t => { t.enabled = !isVideoOn; });
       setIsVideoOn(!isVideoOn);
     }
-  };
+  }
 
-  // 6. Kukata Simu
-  const handleDisconnect = () => {
-    setCallState('disconnected');
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-    }
-    onHangUp();
-  };
+  const statusLabel =
+    callState === 'ringing' ? 'Ringing...' :
+    callState === 'connecting' ? 'Connecting...' :
+    callState === 'connected' ? formatDuration(duration) : 'Call ended';
 
   return (
-    <div className={`relative flex flex-col justify-between items-center bg-zinc-950 text-white transition-all duration-300 overflow-hidden ${isFullScreen ? 'fixed inset-0 z-50 w-screen h-screen' : 'w-full max-w-md h-[680px] rounded-3xl shadow-2xl border border-zinc-800'}`}>
-      
-      {/* BACKGROUND BLUR EFFECT (Telegram Style) */}
-      {!isVideoOn && (
-        <div className="absolute inset-0 opacity-20 bg-cover bg-center blur-3xl scale-110 pointer-events-none" style={{ backgroundImage: `url(${callerAvatarUrl})` }} />
+    <div
+      className="fixed inset-0 z-[700] flex flex-col overflow-hidden select-none"
+      style={{ background: callBg || 'linear-gradient(160deg, #0d0d1a 0%, #1a0026 100%)' }}
+      onClick={resetControlsTimer}
+    >
+      {/* Remote video / avatar */}
+      {callType === 'video' ? (
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
+          {/* Pulse rings */}
+          <div className="relative flex items-center justify-center">
+            {callState !== 'connected' && (
+              <>
+                <div className="absolute w-44 h-44 rounded-full bg-primary/10 animate-ping" style={{ animationDuration: '2s' }} />
+                <div className="absolute w-36 h-36 rounded-full bg-primary/15 animate-ping" style={{ animationDuration: '2s', animationDelay: '0.5s' }} />
+              </>
+            )}
+            <Avatar user={remoteUser} size={112} />
+          </div>
+          <div className="text-center">
+            <h2 className="text-2xl font-black text-white">{remoteUser.username}</h2>
+            <p className="text-white/60 mt-1">{statusLabel}</p>
+          </div>
+        </div>
       )}
 
-      {/* TOP BAR: Muonekano wa Juu */}
-      <div className="w-full z-10 p-5 flex justify-between items-center bg-gradient-to-b from-black/50 to-transparent">
-        <div className="flex items-center gap-2 bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full text-xs text-zinc-300 border border-white/5">
-          <span className={`w-2 h-2 rounded-full ${callState === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-bounce'}`} />
-          {callState === 'calling' ? 'Inapiga...' : 'Mmeunganishwa'}
+      {/* Top bar */}
+      <div
+        className="relative z-10 flex items-center justify-between px-5 pt-12 pb-4 transition-opacity duration-300"
+        style={{
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)',
+          opacity: callType === 'video' ? (controlsVisible ? 1 : 0) : 1,
+        }}
+      >
+        <div className="text-center flex-1">
+          {callType === 'video' && (
+            <>
+              <h2 className="text-white font-black text-lg">{remoteUser.username}</h2>
+              <p className="text-white/60 text-sm">{statusLabel}</p>
+            </>
+          )}
         </div>
-        
-        <button onClick={() => setIsFullScreen(!isFullScreen)} className="p-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition backdrop-blur-md">
-          {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+        <button onClick={hangUp} className="absolute right-4 top-12 p-2 rounded-full bg-white/10 backdrop-blur-md">
+          <X className="w-5 h-5 text-white" />
         </button>
       </div>
 
-      {/* MIDDLE SECTION: Sehemu ya Kati (Avatar au Video) */}
-      <div className="w-full flex-1 flex flex-col justify-center items-center relative px-6">
-        
-        {/* UKIWA KWENYE AUDIO CALL AU VIDEO IMEZIMWA (Telegram Style) */}
-        {!isVideoOn ? (
-          <div className="flex flex-col items-center z-10">
-            <div className="relative mb-6">
-              {/* Ripple Ring Animation ya Telegram */}
-              <div className="absolute inset-0 rounded-full bg-indigo-500/20 animate-ping" />
-              <img src={callerAvatarUrl} alt={callerName} className="w-32 h-32 rounded-full object-cover border-4 border-zinc-800 shadow-xl relative z-10" />
+      {/* Local video PiP */}
+      {callType === 'video' && (
+        <div className="absolute top-20 right-4 z-20 w-28 h-40 rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-black/60">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-cover"
+            style={{ transform: 'scaleX(-1)' }}
+          />
+        </div>
+      )}
+
+      {/* Controls */}
+      <div
+        className="absolute bottom-0 left-0 right-0 z-10 transition-opacity duration-300"
+        style={{
+          opacity: callType === 'video' ? (controlsVisible ? 1 : 0) : 1,
+          background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',
+          paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
+          paddingTop: '48px',
+        }}
+      >
+        {/* Secondary controls */}
+        <div className="flex justify-center gap-5 mb-6">
+          <button
+            onClick={() => setIsSpeakerOn(!isSpeakerOn)}
+            className="flex flex-col items-center gap-1.5"
+          >
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isSpeakerOn ? 'bg-white/20' : 'bg-white/10'}`}>
+              {isSpeakerOn ? <Volume2 className="w-5 h-5 text-white" /> : <VolumeX className="w-5 h-5 text-white/50" />}
             </div>
-            <h2 className="text-2xl font-bold tracking-wide drop-shadow-md">{callerName}</h2>
-            <p className="text-zinc-400 mt-2 font-medium text-sm">
-              {callState === 'calling' ? 'Telegram Audio Call' : formatTime(callDuration)}
-            </p>
-          </div>
-        ) : (
-          /* UKIWA KWENYE VIDEO CALL (WhatsApp Style) */
-          <div className="absolute inset-0 w-full h-full bg-black">
-            {/* Remote Video (Mtu mwingine - Fullscreen) */}
-            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-            
-            {/* Kama hakuna remote stream bado, onyesha loading avatar ya mbali */}
-            {callState === 'calling' && (
-              <div className="absolute inset-0 flex flex-col justify-center items-center bg-zinc-900/90">
-                <img src={callerAvatarUrl} alt={callerName} className="w-24 h-24 rounded-full object-cover animate-pulse border-2 border-white/20 mb-4" />
-                <p className="text-lg font-medium">{callerName}</p>
-                <p className="text-xs text-zinc-400 mt-1">Inatafuta mtandao...</p>
+            <span className="text-white/60 text-[10px]">Speaker</span>
+          </button>
+
+          <button onClick={toggleMute} className="flex flex-col items-center gap-1.5">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-red-500/30' : 'bg-white/20'}`}>
+              {isMuted ? <MicOff className="w-5 h-5 text-red-400" /> : <Mic className="w-5 h-5 text-white" />}
+            </div>
+            <span className="text-white/60 text-[10px]">{isMuted ? 'Unmute' : 'Mute'}</span>
+          </button>
+
+          {callType === 'video' && (
+            <button onClick={toggleVideo} className="flex flex-col items-center gap-1.5">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${!isVideoOn ? 'bg-red-500/30' : 'bg-white/20'}`}>
+                {isVideoOn ? <Video className="w-5 h-5 text-white" /> : <VideoOff className="w-5 h-5 text-red-400" />}
               </div>
-            )}
-
-            {/* Local Video (Kamera yako - Mali ya Mbele ndogo iliyopo kona) */}
-            <div className="absolute top-4 right-4 w-28 h-40 rounded-xl overflow-hidden border border-white/20 shadow-2xl bg-zinc-900 transition-all z-20">
-              <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover transform scale-x-[-1]" />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* BOTTOM ACTIONS BAR: Vidude vya Kudhibiti chini (WhatsApp/Telegram Floating Grid) */}
-      <div className="w-full z-10 p-6 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col items-center gap-6">
-        
-        {/* Vidhibiti vya Ziada vikiwa vimejificha juu kidogo ya kitufe cha kukata */}
-        <div className="flex items-center justify-center gap-6 bg-zinc-900/60 backdrop-blur-xl px-6 py-3 rounded-full border border-white/5 w-fit">
-          {/* Speaker Button */}
-          <button onClick={() => setIsSpeakerOn(!isSpeakerOn)} className={`p-3 rounded-full transition-all active:scale-90 ${isSpeakerOn ? 'text-indigo-400 bg-indigo-500/10' : 'text-zinc-400 hover:text-white'}`}>
-            {isSpeakerOn ? <Volume2 size={22} /> : <VolumeX size={22} />}
-          </button>
-
-          {/* Video Toggle Button */}
-          <button onClick={toggleVideo} className={`p-3 rounded-full transition-all active:scale-90 ${isVideoOn ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-400 hover:text-white'}`}>
-            {isVideoOn ? <Video size={22} /> : <VideoOff size={22} />}
-          </button>
-
-          {/* Microphone Mute Button */}
-          <button onClick={toggleMute} className={`p-3 rounded-full transition-all active:scale-90 ${isMuted ? 'text-rose-400 bg-rose-500/10' : 'text-zinc-400 hover:text-white'}`}>
-            {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
-          </button>
+              <span className="text-white/60 text-[10px]">Camera</span>
+            </button>
+          )}
         </div>
 
-        {/* Big Red End Call Button */}
-        <button onClick={handleDisconnect} className="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-500 active:scale-90 flex justify-center items-center shadow-lg shadow-rose-900/40 transition-all border border-rose-500/30 transform hover:rotate-135 duration-300">
-          <PhoneOff size={28} className="text-white" />
-        </button>
+        {/* End call */}
+        <div className="flex justify-center">
+          <button
+            onClick={hangUp}
+            className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-400 active:scale-90 flex items-center justify-center shadow-2xl shadow-red-500/40 transition-all"
+          >
+            <PhoneOff className="w-7 h-7 text-white" />
+          </button>
+        </div>
       </div>
     </div>
   );
-};
+}
+
+// ── Global Call Listener — placed in App.tsx ──
+export function GlobalCallListener() {
+  const { user } = useAuth();
+  const [incomingCall, setIncomingCall] = useState<{
+    id: string;
+    caller: RemoteUser;
+    callType: 'audio' | 'video';
+  } | null>(null);
+  const [activeCall, setActiveCall] = useState<ActiveCallState | null>(null);
+  const [callBg, setCallBg] = useState('linear-gradient(160deg, #0d0d1a 0%, #1a0026 100%)');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startCallRef = useRef<((user: RemoteUser, type: 'audio' | 'video') => void) | null>(null);
+
+  // Load call background from site_settings
+  useEffect(() => {
+    supabase
+      .from('site_settings')
+      .select('bg_gradient_from,bg_gradient_to')
+      .eq('id', 'main')
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          const from = (data as any).bg_gradient_from || '#0d0d1a';
+          const to = (data as any).bg_gradient_to || '#1a0026';
+          setCallBg(`linear-gradient(160deg, ${from} 0%, ${to} 100%)`);
+        }
+      });
+  }, []);
+
+  // Poll for incoming calls
+  useEffect(() => {
+    if (!user) return;
+    pollRef.current = setInterval(async () => {
+      if (activeCall || incomingCall) return;
+      const { data } = await supabase
+        .from('calls')
+        .select('id, caller_id, call_type, user_profiles!calls_caller_id_fkey(id,username,avatar_url)')
+        .eq('callee_id', user.id)
+        .eq('status', 'ringing')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (data) {
+        const callerProfile = (data as any).user_profiles;
+        setIncomingCall({
+          id: data.id,
+          caller: {
+            id: data.caller_id,
+            username: callerProfile?.username || 'Unknown',
+            avatar: callerProfile?.avatar_url,
+          },
+          callType: data.call_type as 'audio' | 'video',
+        });
+      }
+    }, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [user, activeCall, incomingCall]);
+
+  const startCall = useCallback(async (remoteUser: RemoteUser, type: 'audio' | 'video') => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('calls')
+      .insert({
+        caller_id: user.id,
+        callee_id: remoteUser.id,
+        call_type: type,
+        status: 'ringing',
+      })
+      .select()
+      .single();
+    if (data) {
+      setActiveCall({
+        id: data.id,
+        remoteUser,
+        callType: type,
+        isInitiator: true,
+      });
+    }
+  }, [user]);
+
+  async function acceptCall() {
+    if (!incomingCall || !user) return;
+    await supabase.from('calls').update({ status: 'active' }).eq('id', incomingCall.id);
+    setActiveCall({
+      id: incomingCall.id,
+      remoteUser: incomingCall.caller,
+      callType: incomingCall.callType,
+      isInitiator: false,
+    });
+    setIncomingCall(null);
+  }
+
+  async function rejectCall() {
+    if (!incomingCall) return;
+    await supabase.from('calls').update({ status: 'rejected' }).eq('id', incomingCall.id);
+    setIncomingCall(null);
+  }
+
+  return (
+    <CallContext.Provider value={{ startCall, activeCall, setActiveCall, callBg }}>
+      {/* Incoming call UI */}
+      {incomingCall && !activeCall && (
+        <div
+          className="fixed inset-0 z-[800] flex flex-col items-center justify-center"
+          style={{ background: callBg }}
+        >
+          {/* Pulse rings */}
+          <div className="relative flex items-center justify-center mb-8">
+            <div className="absolute w-52 h-52 rounded-full bg-primary/10 animate-ping" style={{ animationDuration: '2.5s' }} />
+            <div className="absolute w-44 h-44 rounded-full bg-primary/15 animate-ping" style={{ animationDuration: '2.5s', animationDelay: '0.6s' }} />
+            <div className="absolute w-36 h-36 rounded-full bg-primary/20 animate-ping" style={{ animationDuration: '2.5s', animationDelay: '1.2s' }} />
+            <Avatar user={incomingCall.caller} size={120} />
+          </div>
+
+          <h2 className="text-3xl font-black text-white mb-2">{incomingCall.caller.username}</h2>
+          <p className="text-white/60 mb-2">
+            Incoming {incomingCall.callType === 'video' ? 'Video' : 'Audio'} Call
+          </p>
+          <div className="flex items-center gap-1 text-white/40 text-sm mb-16">
+            {incomingCall.callType === 'video' ? <Video className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+            <span>VISION AVAX FOREX</span>
+          </div>
+
+          <div className="flex items-center gap-16">
+            {/* Reject */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={rejectCall}
+                className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-400 active:scale-90 flex items-center justify-center shadow-2xl shadow-red-500/40 transition-all"
+              >
+                <PhoneOff className="w-7 h-7 text-white" />
+              </button>
+              <span className="text-white/50 text-xs">Decline</span>
+            </div>
+            {/* Accept */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={acceptCall}
+                className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-400 active:scale-90 flex items-center justify-center shadow-2xl shadow-green-500/40 transition-all"
+              >
+                <Phone className="w-7 h-7 text-white" />
+              </button>
+              <span className="text-white/50 text-xs">Accept</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active call */}
+      {activeCall && user && (
+        <ActiveCallScreen
+          callId={activeCall.id}
+          localUser={{ id: user.id, username: user.username, avatar: user.avatar }}
+          remoteUser={activeCall.remoteUser}
+          callType={activeCall.callType}
+          isInitiator={activeCall.isInitiator}
+          callBg={callBg}
+          onEnd={() => setActiveCall(null)}
+        />
+      )}
+    </CallContext.Provider>
+  );
+}
