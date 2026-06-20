@@ -912,7 +912,14 @@ export function ActiveMeetingRoom({ meetingId, meetingTitle, isHost, videoOn: in
     { userId: userIdRef.current, username: 'You', avatar_url: profile?.avatar_url, isLocal: true },
     ...participants.map(p => ({ ...p, isLocal: false })),
   ];
-  const cols = allParticipants.length === 1 ? 1 : allParticipants.length <= 4 ? 2 : 3;
+  const cols =
+  allParticipants.length <= 1
+    ? 1
+    : allParticipants.length <= 4
+    ? 2
+    : allParticipants.length <= 9
+    ? 3
+    : 4;
 
   return (
     <>
