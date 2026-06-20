@@ -792,6 +792,13 @@ export function ActiveMeetingRoom({ meetingId, meetingTitle, isHost, videoOn: in
       if (el && el.paused) {
         el.muted = false;
         el.play().catch(() => {});
+        <video
+  autoPlay
+  playsInline
+  muted={false}
+  controls={false}
+  className="absolute inset-0 w-full h-full object-cover"
+/>
       }
     });
     setAudioBlocked(false);
