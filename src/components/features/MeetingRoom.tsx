@@ -607,29 +607,17 @@ export function ActiveMeetingRoom({ meetingId, meetingTitle, isHost, videoOn: in
       }
 
       pc.ontrack = async (e) => {
-  const stream = e.streams[0];
-
-  if (!stream) return;
-
-  remoteStreamsRef.current.set(peerId, stream);
-
-  const el = remoteVideoRefsMap.current.get(peerId);
-
-  if (el) {
-    el.srcObject = stream;
-
-    try {
-      await el.play();
-    } catch {
-      setAudioBlocked(true);
-    }
-  }
-};
-            // Browser blocked autoplay — show unlock button
-            if (err.name === 'NotAllowedError') {
-              setAudioBlocked(true);
-            }
-          });
+        const remoteStream = e.streams[0];
+        if (!remoteStream) return;
+        remoteStreamsRef.current.set(peerId, remoteStream);
+        const el = remoteVideoRefsMap.current.get(peerId);
+        if (el) {
+          el.srcObject = remoteStream;
+          try {
+            await el.play();
+          } catch {
+            setAudioBlocked(true);
+          }
         }
       };
 
@@ -803,13 +791,6 @@ export function ActiveMeetingRoom({ meetingId, meetingTitle, isHost, videoOn: in
       if (el && el.paused) {
         el.muted = false;
         el.play().catch(() => {});
-        <video
-  autoPlay
-  playsInline
-  muted={false}
-  controls={false}
-  className="absolute inset-0 w-full h-full object-cover"
-/>
       }
     });
     setAudioBlocked(false);
