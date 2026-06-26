@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Eye, EyeOff, Mail, Lock, ArrowLeft, TrendingUp, Shield } from 'lucide-react';
 
 type Step = 'choice' | 'login' | 'register-email' | 'register-otp' | 'register-pass' | 'forgot-email' | 'forgot-sent' | 'reset-password';
+type Step = '<GoogleLoginButton onClick={loginWithGoogle} />
 
 function mapUser(user: User) {
   return {
