@@ -14,7 +14,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const apiKey = Deno.env.get('GROQ_API_KEY') ?? '';
+    const apiKey = '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';
     const baseUrl = 'https://api.groq.com/openai/v1';
 
     // Get all pairs with result images
