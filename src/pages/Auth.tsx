@@ -95,6 +95,22 @@ export default function Auth() {
     else { setLoading(false); }
   }
 
+  async function handleGoogleLogin() {
+  setLoading(true);
+
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${window.location.origin}/`,
+    },
+  });
+
+  if (error) {
+    toast.error(error.message);
+    setLoading(false);
+  }
+  }
+
   async function handleResetPassword() {
     if (newPassword.length < 6) return toast.error('Password must be at least 6 characters');
     setLoading(true);
