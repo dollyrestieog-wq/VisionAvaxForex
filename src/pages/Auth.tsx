@@ -202,7 +202,6 @@ export default function Auth() {
     <path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.3l-6.3-5.2C29.3 35 26.8 36 24 36c-5.2 0-9.6-3.3-11.2-8l-6.5 5C9.6 39.5 16.3 44 24 44z"/>
     <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.1-3.4 5.5-6.6 6.8l6.3 5.2C38.7 36.5 44 31 44 24c0-1.3-.1-2.3-.4-3.5z"/>
   </svg>
-
   Continue with Google
 </button>
               <div className="flex items-center gap-2 mt-4 p-3 bg-muted/50 rounded-2xl">
