@@ -477,7 +477,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const apiKey = Deno.env.get('GROQ_API_KEY') ?? '';
+    const apiKey = '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';
     const baseUrl = 'https://api.groq.com/openai/v1';
 
     const { aiId, messages, customSystemPrompt, topicName } = await req.json();
