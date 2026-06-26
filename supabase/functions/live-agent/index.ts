@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const apiKey = Deno.env.get('GROQ_API_KEY') ?? '';
+  const apiKey = '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';
   const baseUrl = 'https://api.groq.com/openai/v1';
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
@@ -130,7 +130,7 @@ ${customInstructions ? `\n## CUSTOM INSTRUCTIONS:\n${customInstructions}\n` : ''
 7. Don't re-introduce yourself every message — only when directly asked "who are you"
 8. If user asks about signals: share current active signals from the list above`;
 
-  // Call OpenRouter AI
+  // Call Groq Cloud AI
   const aiRes = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -140,7 +140,7 @@ ${customInstructions ? `\n## CUSTOM INSTRUCTIONS:\n${customInstructions}\n` : ''
       'X-Title': 'VISION AVAX FOREX',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: systemPrompt },
         ...(messages || []).slice(-20),
@@ -152,8 +152,8 @@ ${customInstructions ? `\n## CUSTOM INSTRUCTIONS:\n${customInstructions}\n` : ''
 
   if (!aiRes.ok) {
     const errText = await aiRes.text().catch(() => 'Unknown error');
-    console.error('OpenRouter error:', aiRes.status, errText);
-    return new Response(JSON.stringify({ error: `OpenRouter: ${aiRes.status} — ${errText.slice(0, 200)}` }), {
+    console.error('Groq Cloud error:', aiRes.status, errText);
+    return new Response(JSON.stringify({ error: `Groq Cloud: ${aiRes.status} — ${errText.slice(0, 200)}` }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
