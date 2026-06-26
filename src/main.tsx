@@ -11,3 +11,9 @@ if ('serviceWorker' in navigator) {
       .catch((err) => console.log('SW registration failed', err));
   });
 }
+
+import { registerSW } from "virtual:pwa-register";
+
+registerSW({
+  immediate: true,
+});
