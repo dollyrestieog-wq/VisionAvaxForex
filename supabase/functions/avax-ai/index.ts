@@ -533,7 +533,7 @@ Deno.serve(async (req) => {
             'X-Title': 'AVAX AI Trading Assistant',
           },
           body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
+            model: 'meta-llama/llama-4-scout-17b-16e-instruct',
             messages: [
               { role: 'system', content: effectiveSystemPrompt },
               { role: 'user', content: 'Introduce yourself and this topic. Be comprehensive, detailed and helpful. End by asking if the user has questions.' },
@@ -564,7 +564,7 @@ Deno.serve(async (req) => {
         'X-Title': 'AVAX AI Trading Assistant',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
         messages: [
           { role: 'system', content: effectiveSystemPrompt },
           ...messages.slice(-20),
@@ -576,7 +576,7 @@ Deno.serve(async (req) => {
 
     if (!aiRes.ok) {
       const errText = await aiRes.text().catch(() => 'Unknown');
-      console.error('OpenRouter error:', aiRes.status, errText);
+      console.error('Groq error:', aiRes.status, errText);
       return new Response(JSON.stringify({ error: `AI error: ${aiRes.status}` }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
