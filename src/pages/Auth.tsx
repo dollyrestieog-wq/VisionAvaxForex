@@ -188,6 +188,23 @@ export default function Auth() {
               <button onClick={() => setStep('register-email')} className="w-full py-4 border border-primary/35 rounded-2xl text-primary font-bold text-base hover:bg-primary/5 transition-all press">
                 Create New Account
               </button>
+              <button
+  onClick={handleGoogleLogin}
+  className="w-full py-4 border border-border rounded-2xl bg-white text-black font-bold flex items-center justify-center gap-3 hover:bg-gray-100 transition-all press"
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 48 48"
+    className="w-5 h-5"
+  >
+    <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.3-.4-3.5z"/>
+    <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15 18.9 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+    <path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.3l-6.3-5.2C29.3 35 26.8 36 24 36c-5.2 0-9.6-3.3-11.2-8l-6.5 5C9.6 39.5 16.3 44 24 44z"/>
+    <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.1-3.4 5.5-6.6 6.8l6.3 5.2C38.7 36.5 44 31 44 24c0-1.3-.1-2.3-.4-3.5z"/>
+  </svg>
+
+  Continue with Google
+</button>
               <div className="flex items-center gap-2 mt-4 p-3 bg-muted/50 rounded-2xl">
                 <Shield className="w-4 h-4 text-primary flex-shrink-0" />
                 <p className="text-xs text-muted-foreground">Secured with end-to-end encryption</p>
