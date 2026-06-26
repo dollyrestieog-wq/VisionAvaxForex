@@ -58,7 +58,7 @@ serve(async (req) => {
             'X-Title': 'VISION AVAX FOREX',
           },
           body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
+            model: 'meta-llama/llama-4-scout-17b-16e-instruct',
             messages: [
               {
                 role: 'system',
@@ -94,7 +94,7 @@ serve(async (req) => {
 
         if (!response.ok) {
           const errText = await response.text().catch(() => 'Unknown');
-          console.error('OpenRouter challenge error:', response.status, errText);
+          console.error('Groq challenge error:', response.status, errText);
           continue;
         }
 
