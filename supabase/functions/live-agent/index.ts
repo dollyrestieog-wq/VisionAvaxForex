@@ -13,8 +13,8 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const apiKey = Deno.env.get('OPENROUTER_API_KEY') ?? '';
-  const baseUrl = 'https://openrouter.ai/api/v1';
+  const apiKey = Deno.env.get('GROQ_API_KEY') ?? '';
+  const baseUrl = 'https://api.groq.com/openai/v1';
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
