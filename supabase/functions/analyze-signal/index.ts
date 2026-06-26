@@ -10,8 +10,8 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const apiKey = Deno.env.get('OPENROUTER_API_KEY') ?? '';
-    const baseUrl = 'https://openrouter.ai/api/v1';
+    const apiKey = Deno.env.get('GROQ_API_KEY') ?? '';
+    const baseUrl = 'https://api.groq.com/openai/v1';
 
     const { imageUrl, mode } = await req.json();
 
